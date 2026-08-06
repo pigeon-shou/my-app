@@ -8,8 +8,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.0",
+    "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
-    "hono": "^4.13.0"
+    "dotenv": "^17.4.2",
+    "hono": "^4.13.0",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
