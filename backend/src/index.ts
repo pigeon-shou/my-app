@@ -51,4 +51,11 @@ app.post('/api/subscriptions', async (c) => {
   return c.json(subscription, 201)
 })
 
+app.get('/api/categories', async (c) => {
+  const categories = await prisma.category.findMany({
+    orderBy: { id: 'asc' },
+  })
+  return c.json(categories)
+})
+
 export default app
