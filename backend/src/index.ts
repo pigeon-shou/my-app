@@ -36,4 +36,19 @@ app.get('/api/subscriptions', async (c) => {
   return c.json(subscriptions)
 })
 
+app.post('/api/subscriptions', async (c) => {
+  const body = await c.req.json()
+
+  const subscription = await prisma.subscription.create({
+    data: {
+      name: body.name,
+      price: body.price,
+      cancelDeadline: new Date(body.cancelDeadline),
+      categoryId: body.categoryId,
+    },
+  })
+
+  return c.json(subscription, 201)
+})
+
 export default app
