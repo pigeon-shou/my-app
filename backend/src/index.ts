@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -23,6 +24,16 @@ serve({
   port: 8787
 }, (info) => {
   console.log(`Server is running on http://localhost:${info.port}`)
+})
+
+import { prisma } from './db'
+
+app.get('/api/subscriptions', async (c) => {
+  const subscriptions = await prisma.subscription.findMany({
+    include: { category: true },
+    orderBy: { cancelDeadline: 'asc' },
+  })
+  return c.json(subscriptions)
 })
 
 export default app
