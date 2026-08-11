@@ -63,12 +63,21 @@ app.get('/api/subscriptions/:id', async (c) => {
   const subscription = await prisma.subscription.findUnique({
     where: { id },
   })
+
+  if (!subscription) {
+    return c.json({ error: 'サブスクが見つかりません' }, 404)
+  }
   return c.json(subscription)
 })
 
 app.put('/api/subscriptions/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
+
+   const existing = await prisma.subscription.findUnique({ where: { id } })
+  if (!existing) {
+    return c.json({ error: 'サブスクが見つかりません' }, 404)
+  }
 
   const subscription = await prisma.subscription.update({
     where: { id },
@@ -85,6 +94,11 @@ app.put('/api/subscriptions/:id', async (c) => {
 
 app.delete('/api/subscriptions/:id', async (c) => {
   const id = Number(c.req.param('id'))
+
+  const existing = await prisma.subscription.findUnique({ where: { id } })
+  if (!existing) {
+    return c.json({ error: 'サブスクが見つかりません' }, 404)
+  }
 
   await prisma.subscription.delete({
     where: { id },
