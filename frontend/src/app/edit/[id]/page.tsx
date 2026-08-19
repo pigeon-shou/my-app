@@ -18,42 +18,77 @@ export default function EditSubscription() {
   const [price, setPrice] = useState('')
   const [cancelDeadline, setCancelDeadline] = useState('')
   const [categoryId, setCategoryId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     fetch('http://localhost:8787/api/categories')
       .then((res) => res.json())
       .then((data) => setCategories(data))
+      .catch(() => setError('カテゴリの取得に失敗しました。時間をおいて再度お試しください。'))
 
     fetch(`http://localhost:8787/api/subscriptions/${id}`)
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        if (res.status === 404) {
+          setNotFound(true)
+          return
+        }
+        if (!res.ok) {
+          setError('サブスク情報の取得に失敗しました。')
+          return
+        }
+        const data = await res.json()
         setName(data.name)
         setPrice(String(data.price))
         setCancelDeadline(data.cancelDeadline.slice(0, 10))
         setCategoryId(data.categoryId)
       })
+      .catch(() => setError('通信に失敗しました。サーバーが起動しているか確認してください。'))
   }, [id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
 
     if (!name || !price || !cancelDeadline || !categoryId) {
-      alert('全ての項目を入力してください')
+      setError('全ての項目を入力してください')
       return
     }
 
-    await fetch(`http://localhost:8787/api/subscriptions/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        price: Number(price),
-        cancelDeadline,
-        categoryId,
-      }),
-    })
+    setSubmitting(true)
+    try {
+      const res = await fetch(`http://localhost:8787/api/subscriptions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          price: Number(price),
+          cancelDeadline,
+          categoryId,
+        }),
+      })
 
-    router.push('/')
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setError(body?.error ?? '更新に失敗しました。入力内容を確認してください。')
+        return
+      }
+
+      router.push('/')
+    } catch {
+      setError('通信に失敗しました。サーバーが起動しているか確認してください。')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (notFound) {
+    return (
+      <div className="p-8">
+        <p>指定されたサブスクが見つかりませんでした。</p>
+      </div>
+    )
   }
 
   return (
@@ -91,7 +126,11 @@ export default function EditSubscription() {
         ))}
       </div>
 
-      <button type="submit">更新する</button>
+      {error && <p className="text-red-600 mt-2">{error}</p>}
+
+      <button type="submit" disabled={submitting}>
+        {submitting ? '更新中...' : '更新する'}
+      </button>
     </form>
   )
 }

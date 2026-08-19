@@ -13,22 +13,35 @@ type Subscription = {
 
 export default function Home() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('http://localhost:8787/api/subscriptions')
       .then((res) => res.json())
       .then((data) => setSubscriptions(data))
+      .catch(() => setError('一覧の取得に失敗しました。サーバーが起動しているか確認してください。'))
   }, [])
 
   const handleDelete = async (id: number) => {
     const ok = confirm('本当に削除しますか?')
     if (!ok) return
 
-    await fetch(`http://localhost:8787/api/subscriptions/${id}`, {
-      method: 'DELETE',
-    })
+    setError(null)
+    try {
+      const res = await fetch(`http://localhost:8787/api/subscriptions/${id}`, {
+        method: 'DELETE',
+      })
 
-    setSubscriptions(subscriptions.filter((s) => s.id !== id))
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setError(body?.error ?? '削除に失敗しました。')
+        return
+      }
+
+      setSubscriptions(subscriptions.filter((s) => s.id !== id))
+    } catch {
+      setError('通信に失敗しました。サーバーが起動しているか確認してください。')
+    }
   }
 
   const total = subscriptions.reduce((sum, s) => sum + s.price, 0)
@@ -36,6 +49,7 @@ export default function Home() {
   return (
     <div className="p-8">
       <h1 className="text-xl font-bold mb-4">サブスク一覧</h1>
+      {error && <p className="text-red-600 mb-4">{error}</p>}
       <p className="mb-4">月額合計: ¥{total.toLocaleString()}</p>
 
       <Link href="/new" className="text-blue-600 underline">
