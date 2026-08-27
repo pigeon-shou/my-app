@@ -1,0 +1,652 @@
+diff --git a/backend/.env.example b/backend/.env.example
+new file mode 100644
+index 0000000..094f3b0
+--- /dev/null
++++ b/backend/.env.example
+@@ -0,0 +1,23 @@
++# データベース接続
++DATABASE_URL="postgresql://myapp:myapp_password@localhost:5432/myapp_dev"
++
++# --- 解約締切リマインダーメール設定 ---
++# 送信元のメールアカウント。デフォルトではGmailを使う(SMTP_HOSTを指定した場合はそちらを優先)。
++# Gmailの場合、通常のパスワードではなく「アプリパスワード」を発行して使う。
++# https://myaccount.google.com/apppasswords
++SMTP_USER=your-address@gmail.com
++SMTP_PASS=your-16-digit-app-password
++
++# 任意: Gmail以外のSMTPサービス(Resendなど)を使う場合に設定する
++# SMTP_HOST=smtp.example.com
++# SMTP_PORT=587
++
++# 通知メールの送信先
++NOTIFY_TO_EMAIL=your-address@gmail.com
++
++# 解約締切の何日前から通知対象にするか（デフォルト: 3）
++REMINDER_DAYS_BEFORE=3
++
++# 毎日何時に自動チェックするか（cron形式、デフォルト: 毎日9:00）
++REMINDER_CRON="0 9 * * *"
++REMINDER_TZ=Asia/Tokyo
+diff --git a/backend/README.md b/backend/README.md
+index e12b31d..cc84b70 100644
+--- a/backend/README.md
++++ b/backend/README.md
+@@ -6,3 +6,20 @@ npm run dev
+ ```
+ open http://localhost:3000
+ ```
++
++## 解約締切リマインダーメールの設定
++
++1. `.env.example` を `.env` にコピーする
++2. `DATABASE_URL` を設定する
++3. `SMTP_USER` / `SMTP_PASS` / `NOTIFY_TO_EMAIL` を設定する
++   - デフォルトはGmail（[アプリパスワード](https://myaccount.google.com/apppasswords)）を使う
++   - Gmail以外のSMTPサービスを使う場合は `SMTP_HOST` / `SMTP_PORT` も設定する
++4. 必要に応じて `REMINDER_DAYS_BEFORE`（何日前から通知するか）、`REMINDER_CRON`（自動チェックの時刻）を調整する
++5. `npx prisma migrate dev` でDBに反映する
++
++サーバー起動中は毎日指定時刻（デフォルト9:00 JST）に自動でチェック・送信される。
++すぐに動作確認したい場合は、サーバー起動中に以下を実行すると即座にチェック・送信される。
++
++```
++curl -X POST http://localhost:8787/api/notify/check-deadlines
++```
+diff --git a/backend/package-lock.json b/backend/package-lock.json
+index c1b075d..a442398 100644
+--- a/backend/package-lock.json
++++ b/backend/package-lock.json
+@@ -11,11 +11,15 @@
+         "@prisma/client": "^7.9.1",
+         "dotenv": "^17.4.2",
+         "hono": "^4.13.0",
++        "node-cron": "^3.0.3",
++        "nodemailer": "^6.9.16",
+         "pg": "^8.22.0",
+         "zod": "^4.4.3"
+       },
+       "devDependencies": {
+         "@types/node": "^26.1.1",
++        "@types/node-cron": "^3.0.11",
++        "@types/nodemailer": "^6.4.16",
+         "prisma": "^7.9.1",
+         "tsx": "^4.23.0",
+         "typescript": "^7.0.2"
+@@ -988,6 +992,23 @@
+         "undici-types": "~8.3.0"
+       }
+     },
++    "node_modules/@types/node-cron": {
++      "version": "3.0.11",
++      "resolved": "https://registry.npmjs.org/@types/node-cron/-/node-cron-3.0.11.tgz",
++      "integrity": "sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@types/nodemailer": {
++      "version": "6.4.24",
++      "resolved": "https://registry.npmjs.org/@types/nodemailer/-/nodemailer-6.4.24.tgz",
++      "integrity": "sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*"
++      }
++    },
+     "node_modules/@types/pg": {
+       "version": "8.20.4",
+       "resolved": "https://registry.npmjs.org/@types/pg/-/pg-8.20.4.tgz",
+@@ -1016,6 +1037,7 @@
+       "cpu": [
+         "ppc64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1032,6 +1054,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1048,6 +1071,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1064,6 +1088,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1080,6 +1105,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1096,6 +1122,7 @@
+       "cpu": [
+         "arm"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1112,6 +1139,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1128,6 +1156,7 @@
+       "cpu": [
+         "loong64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1144,6 +1173,7 @@
+       "cpu": [
+         "mips64el"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1160,6 +1190,7 @@
+       "cpu": [
+         "ppc64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1176,6 +1207,7 @@
+       "cpu": [
+         "riscv64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1192,6 +1224,7 @@
+       "cpu": [
+         "s390x"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1208,6 +1241,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1224,6 +1258,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1240,6 +1275,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1256,6 +1292,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1272,6 +1309,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1288,6 +1326,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1304,6 +1343,7 @@
+       "cpu": [
+         "arm64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -1320,6 +1360,7 @@
+       "cpu": [
+         "x64"
+       ],
++      "dev": true,
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+@@ -2169,6 +2210,27 @@
+         "node": ">=8.0.0"
+       }
+     },
++    "node_modules/node-cron": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmjs.org/node-cron/-/node-cron-3.0.3.tgz",
++      "integrity": "sha512-dOal67//nohNgYWb+nWmg5dkFdIwDm8EpeGYMekPMrngV3637lqnX0lbUcCtgibHTz6SEz7DAIjKvKDFYCnO1A==",
++      "license": "ISC",
++      "dependencies": {
++        "uuid": "8.3.2"
++      },
++      "engines": {
++        "node": ">=6.0.0"
++      }
++    },
++    "node_modules/nodemailer": {
++      "version": "6.10.1",
++      "resolved": "https://registry.npmjs.org/nodemailer/-/nodemailer-6.10.1.tgz",
++      "integrity": "sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==",
++      "license": "MIT-0",
++      "engines": {
++        "node": ">=6.0.0"
++      }
++    },
+     "node_modules/ohash": {
+       "version": "2.0.11",
+       "resolved": "https://registry.npmjs.org/ohash/-/ohash-2.0.11.tgz",
+@@ -2696,6 +2758,16 @@
+       "integrity": "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==",
+       "license": "MIT"
+     },
++    "node_modules/uuid": {
++      "version": "8.3.2",
++      "resolved": "https://registry.npmjs.org/uuid/-/uuid-8.3.2.tgz",
++      "integrity": "sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==",
++      "deprecated": "uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).",
++      "license": "MIT",
++      "bin": {
++        "uuid": "dist/bin/uuid"
++      }
++    },
+     "node_modules/valibot": {
+       "version": "1.4.2",
+       "resolved": "https://registry.npmjs.org/valibot/-/valibot-1.4.2.tgz",
+diff --git a/backend/package.json b/backend/package.json
+index b584d50..dcebdc3 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -12,11 +12,15 @@
+     "@prisma/client": "^7.9.1",
+     "dotenv": "^17.4.2",
+     "hono": "^4.13.0",
++    "node-cron": "^3.0.3",
++    "nodemailer": "^6.9.16",
+     "pg": "^8.22.0",
+     "zod": "^4.4.3"
+   },
+   "devDependencies": {
+     "@types/node": "^26.1.1",
++    "@types/node-cron": "^3.0.11",
++    "@types/nodemailer": "^6.4.16",
+     "prisma": "^7.9.1",
+     "tsx": "^4.23.0",
+     "typescript": "^7.0.2"
+diff --git a/backend/prisma/migrations/20260827130000_add_reminder_sent_at/migration.sql b/backend/prisma/migrations/20260827130000_add_reminder_sent_at/migration.sql
+new file mode 100644
+index 0000000..a8436c5
+--- /dev/null
++++ b/backend/prisma/migrations/20260827130000_add_reminder_sent_at/migration.sql
+@@ -0,0 +1,2 @@
++-- AlterTable
++ALTER TABLE "Subscription" ADD COLUMN     "reminderSentAt" TIMESTAMP(3);
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index 996ba04..d9208c2 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -19,12 +19,14 @@ model Category {
+ }
+ 
+ model Subscription {
+-  id             Int      @id @default(autoincrement())
++  id             Int       @id @default(autoincrement())
+   name           String
+   price          Int
+   cancelDeadline DateTime
+   categoryId     Int
+-  category       Category @relation(fields: [categoryId], references: [id])
+-  createdAt      DateTime @default(now())
+-  updatedAt      DateTime @updatedAt
++  category       Category  @relation(fields: [categoryId], references: [id])
++  createdAt      DateTime  @default(now())
++  updatedAt      DateTime  @updatedAt
++  // 解約締切リマインダーメールを送信した日時。cancelDeadlineが変更されたらnullに戻す。
++  reminderSentAt DateTime?
+ }
+\ No newline at end of file
+diff --git a/backend/src/index.ts b/backend/src/index.ts
+index 3bd2c4b..7b182f4 100644
+--- a/backend/src/index.ts
++++ b/backend/src/index.ts
+@@ -3,7 +3,9 @@ import { serve } from '@hono/node-server'
+ import { Hono } from 'hono'
+ import { cors } from 'hono/cors'
+ import { HTTPException } from 'hono/http-exception'
++import cron from 'node-cron'
+ import { subscriptionInputSchema } from './schemas'
++import { checkAndSendReminders } from './reminder'
+ 
+ const app = new Hono()
+ 
+@@ -103,19 +105,38 @@ app.put('/api/subscriptions/:id', async (c) => {
+     return c.json({ error: 'サブスクが見つかりません' }, 404)
+   }
+ 
++  const newDeadline = new Date(input.cancelDeadline)
++  // 解約締切日が変わったら、その締切に対する通知はまだ済んでいないはずなので
++  // reminderSentAtをリセットして再度リマインダー対象になるようにする。
++  const deadlineChanged = existing.cancelDeadline.getTime() !== newDeadline.getTime()
++
+   const subscription = await prisma.subscription.update({
+     where: { id },
+     data: {
+       name: input.name,
+       price: input.price,
+-      cancelDeadline: new Date(input.cancelDeadline),
++      cancelDeadline: newDeadline,
+       categoryId: input.categoryId,
++      ...(deadlineChanged ? { reminderSentAt: null } : {}),
+     },
+   })
+ 
+   return c.json(subscription)
+ })
+ 
++// 解約締切リマインダーを即時チェック・送信する（動作確認や手動実行用）。
++// 通常はサーバー起動中、下部のcronスケジュールにより毎日自動で実行される。
++app.post('/api/notify/check-deadlines', async (c) => {
++  try {
++    const result = await checkAndSendReminders()
++    return c.json(result)
++  } catch (err) {
++    console.error('[reminder] 手動チェックに失敗しました', err)
++    const message = err instanceof Error ? err.message : 'リマインダーの送信に失敗しました'
++    return c.json({ error: message }, 500)
++  }
++})
++
+ app.delete('/api/subscriptions/:id', async (c) => {
+   const id = parseIdParam(c.req.param('id'))
+ 
+@@ -141,4 +162,24 @@ app.onError((err, c) => {
+   return c.json({ error: 'サーバーでエラーが発生しました' }, 500)
+ })
+ 
++// 解約締切リマインダーの自動チェック。
++// サーバープロセスが起動している間のみ、毎日指定時刻(デフォルト9:00 JST)に実行される。
++// SMTP_USER等のメール送信用環境変数が未設定の場合はエラーをログに出すだけで、サーバー自体は止めない。
++const REMINDER_CRON = process.env.REMINDER_CRON ?? '0 9 * * *'
++cron.schedule(
++  REMINDER_CRON,
++  () => {
++    checkAndSendReminders()
++      .then(({ notified }) => {
++        if (notified > 0) {
++          console.log(`[reminder] 解約締切リマインダーを${notified}件分送信しました`)
++        }
++      })
++      .catch((err) => {
++        console.error('[reminder] 自動チェックに失敗しました', err)
++      })
++  },
++  { timezone: process.env.REMINDER_TZ ?? 'Asia/Tokyo' },
++)
++
+ export default app
+diff --git a/backend/src/mailer.ts b/backend/src/mailer.ts
+new file mode 100644
+index 0000000..73f35c2
+--- /dev/null
++++ b/backend/src/mailer.ts
+@@ -0,0 +1,44 @@
++// src/mailer.ts
++// 解約締切リマインダーメールの送信処理。
++// SMTP_HOST が設定されていればそれを使い、未設定ならGmail(アプリパスワード)をデフォルトとして使う。
++
++import nodemailer from 'nodemailer'
++
++function getTransporter() {
++  const { SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT } = process.env
++
++  if (!SMTP_USER || !SMTP_PASS) {
++    throw new Error('メール送信に必要な環境変数(SMTP_USER, SMTP_PASS)が未設定です')
++  }
++
++  if (SMTP_HOST) {
++    const port = Number(SMTP_PORT ?? 587)
++    return nodemailer.createTransport({
++      host: SMTP_HOST,
++      port,
++      secure: port === 465,
++      auth: { user: SMTP_USER, pass: SMTP_PASS },
++    })
++  }
++
++  // デフォルト: Gmail + アプリパスワード
++  return nodemailer.createTransport({
++    service: 'gmail',
++    auth: { user: SMTP_USER, pass: SMTP_PASS },
++  })
++}
++
++export async function sendReminderEmail(subject: string, text: string): Promise<void> {
++  const to = process.env.NOTIFY_TO_EMAIL
++  if (!to) {
++    throw new Error('メール送信に必要な環境変数(NOTIFY_TO_EMAIL)が未設定です')
++  }
++
++  const transporter = getTransporter()
++  await transporter.sendMail({
++    from: process.env.SMTP_USER,
++    to,
++    subject,
++    text,
++  })
++}
+diff --git a/backend/src/reminder.ts b/backend/src/reminder.ts
+new file mode 100644
+index 0000000..48dd821
+--- /dev/null
++++ b/backend/src/reminder.ts
+@@ -0,0 +1,62 @@
++// src/reminder.ts
++// 解約締切が近い(または過ぎている)のに未通知のサブスクをまとめて1通のメールで知らせる。
++//
++// 対象条件: cancelDeadline <= 今日 + REMINDER_DAYS_BEFORE日、かつ reminderSentAt が未設定
++// reminderSentAt は cancelDeadline が更新される（＝解約締切日が変わる）と null にリセットされるので、
++// 「まだこの締切について通知していないサブスク」だけが毎回対象になる。
++
++import { prisma } from './db'
++import { sendReminderEmail } from './mailer'
++
++const DEFAULT_REMINDER_DAYS_BEFORE = 3
++
++function getReminderDaysBefore(): number {
++  const raw = process.env.REMINDER_DAYS_BEFORE
++  const parsed = raw ? Number(raw) : DEFAULT_REMINDER_DAYS_BEFORE
++  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_REMINDER_DAYS_BEFORE
++}
++
++function formatDate(date: Date): string {
++  return date.toISOString().slice(0, 10)
++}
++
++export async function checkAndSendReminders(): Promise<{ notified: number }> {
++  const daysBefore = getReminderDaysBefore()
++
++  const threshold = new Date()
++  threshold.setDate(threshold.getDate() + daysBefore)
++  threshold.setHours(23, 59, 59, 999)
++
++  const targets = await prisma.subscription.findMany({
++    where: {
++      cancelDeadline: { lte: threshold },
++      reminderSentAt: null,
++    },
++    include: { category: true },
++    orderBy: { cancelDeadline: 'asc' },
++  })
++
++  if (targets.length === 0) {
++    return { notified: 0 }
++  }
++
++  const lines = targets.map((s) => {
++    return `・${s.name}(${s.category.name}) 月額¥${s.price.toLocaleString()} - 解約締切: ${formatDate(s.cancelDeadline)}`
++  })
++
++  const subject = `【サブスク管理】解約締切が近いサブスクが${targets.length}件あります`
++  const text = [
++    `解約締切まで${daysBefore}日以内、または締切を過ぎているサブスクが${targets.length}件あります。`,
++    '',
++    ...lines,
++  ].join('\n')
++
++  await sendReminderEmail(subject, text)
++
++  await prisma.subscription.updateMany({
++    where: { id: { in: targets.map((s) => s.id) } },
++    data: { reminderSentAt: new Date() },
++  })
++
++  return { notified: targets.length }
++}
+diff --git a/frontend/src/app/page.tsx b/frontend/src/app/page.tsx
+index 1c57715..7f6de65 100644
+--- a/frontend/src/app/page.tsx
++++ b/frontend/src/app/page.tsx
+@@ -11,6 +11,25 @@ type Subscription = {
+   category: { id: number; name: string }
+ }
+ 
++// バックエンドの解約リマインダーメール(REMINDER_DAYS_BEFORE)のデフォルト値と合わせている。
++// メール側の日数を変更した場合はこちらも合わせて変更する。
++const REMINDER_DAYS_BEFORE = 3
++
++// 今日から解約締切日までの日数を返す（締切を過ぎていれば負の数）
++function daysUntil(dateStr: string): number {
++  const today = new Date()
++  today.setHours(0, 0, 0, 0)
++  const deadline = new Date(dateStr)
++  deadline.setHours(0, 0, 0, 0)
++  return Math.round((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
++}
++
++function deadlineLabel(remaining: number): string {
++  if (remaining < 0) return '期限切れ'
++  if (remaining === 0) return '本日締切'
++  return `あと${remaining}日`
++}
++
+ export default function Home() {
+   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+   const [error, setError] = useState<string | null>(null)
+@@ -45,11 +64,17 @@ export default function Home() {
+   }
+ 
+   const total = subscriptions.reduce((sum, s) => sum + s.price, 0)
++  const urgentCount = subscriptions.filter((s) => daysUntil(s.cancelDeadline) <= REMINDER_DAYS_BEFORE).length
+ 
+   return (
+     <div className="p-8">
+       <h1 className="text-xl font-bold mb-4">サブスク一覧</h1>
+       {error && <p className="text-red-600 mb-4">{error}</p>}
++      {urgentCount > 0 && (
++        <p className="mb-4 text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
++          解約締切が近いサブスクが{urgentCount}件あります(残り{REMINDER_DAYS_BEFORE}日以内)
++        </p>
++      )}
+       <p className="mb-4">月額合計: ¥{total.toLocaleString()}</p>
+ 
+       <Link href="/new" className="text-blue-600 underline">
+@@ -57,22 +82,35 @@ export default function Home() {
+       </Link>
+ 
+       <ul className="mt-4">
+-        {subscriptions.map((s) => (
+-          <li key={s.id} className="border-b py-3 flex items-center justify-between">
+-            <div>
+-              <p className="font-bold">{s.name}({s.category.name})</p>
+-              <p>¥{s.price.toLocaleString()} / 解約締切: {s.cancelDeadline.slice(0, 10)}</p>
+-            </div>
+-            <div className="flex gap-2">
+-              <Link href={`/edit/${s.id}`} className="text-blue-600 underline">
+-                編集
+-              </Link>
+-              <button onClick={() => handleDelete(s.id)} className="text-red-600 underline">
+-                削除
+-              </button>
+-            </div>
+-          </li>
+-        ))}
++        {subscriptions.map((s) => {
++          const remaining = daysUntil(s.cancelDeadline)
++          const isUrgent = remaining <= REMINDER_DAYS_BEFORE
++
++          return (
++            <li
++              key={s.id}
++              className={`border-b py-3 flex items-center justify-between ${isUrgent ? 'bg-red-50' : ''}`}
++            >
++              <div>
++                <p className="font-bold">{s.name}({s.category.name})</p>
++                <p>
++                  ¥{s.price.toLocaleString()} / 解約締切: {s.cancelDeadline.slice(0, 10)}
++                  {isUrgent && (
++                    <span className="ml-2 text-red-600 font-bold">{deadlineLabel(remaining)}</span>
++                  )}
++                </p>
++              </div>
++              <div className="flex gap-2">
++                <Link href={`/edit/${s.id}`} className="text-blue-600 underline">
++                  編集
++                </Link>
++                <button onClick={() => handleDelete(s.id)} className="text-red-600 underline">
++                  削除
++                </button>
++              </div>
++            </li>
++          )
++        })}
+       </ul>
+     </div>
+   )

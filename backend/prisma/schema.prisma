@@ -19,12 +19,14 @@ model Category {
 }
 
 model Subscription {
-  id             Int      @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   name           String
   price          Int
   cancelDeadline DateTime
   categoryId     Int
-  category       Category @relation(fields: [categoryId], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  category       Category  @relation(fields: [categoryId], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  // 解約締切リマインダーメールを送信した日時。cancelDeadlineが変更されたらnullに戻す。
+  reminderSentAt DateTime?
 }

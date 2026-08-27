@@ -3,7 +3,9 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
+import cron from 'node-cron'
 import { subscriptionInputSchema } from './schemas'
+import { checkAndSendReminders } from './reminder'
 
 const app = new Hono()
 
@@ -103,17 +105,36 @@ app.put('/api/subscriptions/:id', async (c) => {
     return c.json({ error: 'サブスクが見つかりません' }, 404)
   }
 
+  const newDeadline = new Date(input.cancelDeadline)
+  // 解約締切日が変わったら、その締切に対する通知はまだ済んでいないはずなので
+  // reminderSentAtをリセットして再度リマインダー対象になるようにする。
+  const deadlineChanged = existing.cancelDeadline.getTime() !== newDeadline.getTime()
+
   const subscription = await prisma.subscription.update({
     where: { id },
     data: {
       name: input.name,
       price: input.price,
-      cancelDeadline: new Date(input.cancelDeadline),
+      cancelDeadline: newDeadline,
       categoryId: input.categoryId,
+      ...(deadlineChanged ? { reminderSentAt: null } : {}),
     },
   })
 
   return c.json(subscription)
+})
+
+// 解約締切リマインダーを即時チェック・送信する（動作確認や手動実行用）。
+// 通常はサーバー起動中、下部のcronスケジュールにより毎日自動で実行される。
+app.post('/api/notify/check-deadlines', async (c) => {
+  try {
+    const result = await checkAndSendReminders()
+    return c.json(result)
+  } catch (err) {
+    console.error('[reminder] 手動チェックに失敗しました', err)
+    const message = err instanceof Error ? err.message : 'リマインダーの送信に失敗しました'
+    return c.json({ error: message }, 500)
+  }
 })
 
 app.delete('/api/subscriptions/:id', async (c) => {
@@ -140,5 +161,25 @@ app.onError((err, c) => {
   console.error(err)
   return c.json({ error: 'サーバーでエラーが発生しました' }, 500)
 })
+
+// 解約締切リマインダーの自動チェック。
+// サーバープロセスが起動している間のみ、毎日指定時刻(デフォルト9:00 JST)に実行される。
+// SMTP_USER等のメール送信用環境変数が未設定の場合はエラーをログに出すだけで、サーバー自体は止めない。
+const REMINDER_CRON = process.env.REMINDER_CRON ?? '0 9 * * *'
+cron.schedule(
+  REMINDER_CRON,
+  () => {
+    checkAndSendReminders()
+      .then(({ notified }) => {
+        if (notified > 0) {
+          console.log(`[reminder] 解約締切リマインダーを${notified}件分送信しました`)
+        }
+      })
+      .catch((err) => {
+        console.error('[reminder] 自動チェックに失敗しました', err)
+      })
+  },
+  { timezone: process.env.REMINDER_TZ ?? 'Asia/Tokyo' },
+)
 
 export default app
